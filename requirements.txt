@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pydantic
+yt-dlp
+httpx
+curl-cffi
