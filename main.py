@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import yt_dlp
 import httpx
 import re
-import os  # تمت إضافة هذه المكتبة للتحقق من وجود ملف الكوكيز
+import os
 
 app = FastAPI(title="Nazelha Video Downloader API")
 
@@ -127,12 +127,13 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
         else:
             format_string = "worstaudio/worst"
     else:
+        # التعديل هنا لطلب صيغة فيديو مدمجة جاهزة لتجنب خطأ not available
         if quality == "high":
-            format_string = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            format_string = "best[ext=mp4]/best"
         elif quality == "medium":
-            format_string = "bestvideo[height<=480][ext=mp4]+bestaudio/best[height<=480][ext=mp4]/best[height<=480]/best"
+            format_string = "best[height<=480][ext=mp4]/best[height<=480]/best"
         else:
-            format_string = "bestvideo[height<=360][ext=mp4]+bestaudio/best[height<=360][ext=mp4]/best[height<=360]/worst"
+            format_string = "best[height<=360][ext=mp4]/best[height<=360]/worst"
 
     # yt-dlp options with anti-bot measures
     ydl_opts = {
@@ -152,7 +153,7 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
     }
 
     # ==========================================
-    # === التعديل الجديد: التحقق من وجود الكوكيز ===
+    # === التحقق من وجود الكوكيز ===
     if os.path.exists("cookies.txt"):
         ydl_opts["cookiefile"] = "cookies.txt"
     # ==========================================
