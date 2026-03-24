@@ -114,15 +114,18 @@ async def handle_tiktok(url: str, download_type: str):
 
 
 # ==========================================
-# yt-dlp Handler (YouTube, Instagram, etc.) - Smart Extraction
+# yt-dlp Handler (YouTube, Instagram, etc.) - Smart Extraction V3
 # ==========================================
 async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform: str = "general"):
     
-    # صيغة مرنة جداً عشان yt-dlp ميضربش خطأ أبداً ويجيب كل الداتا
-    format_string = "bestvideo+bestaudio/best/worst"
+    # === التعديل هنا: صيغة آمنة 100% مستحيل تضرب خطأ ===
+    if download_type == "audio":
+        safe_format = "bestaudio/best/worst"
+    else:
+        safe_format = "best[ext=mp4]/best/worst"
 
     ydl_opts = {
-        "format": format_string,
+        "format": safe_format,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -175,31 +178,30 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
                         direct_url = audio_formats[-1]["url"]
 
                 else: # Video
-                    # تصفية لجلب الصيغ المدمجة (صوت وصورة)
+                    # تصفية لجلب الصيغ المدمجة (صوت وصورة) اللي بتشتغل برابط مباشر
                     combined_formats = [f for f in formats if f.get("vcodec") != "none" and f.get("acodec") != "none" and f.get("url")]
                     
                     if combined_formats:
                         combined_formats.sort(key=lambda x: x.get("height") or 0)
                         
                         if quality == "high":
-                            # الأفضلية لـ mp4 لو متاح
                             mp4_combined = [f for f in combined_formats if f.get("ext") == "mp4"]
                             direct_url = mp4_combined[-1]["url"] if mp4_combined else combined_formats[-1]["url"]
                         elif quality == "medium":
                             med_formats = [f for f in combined_formats if (f.get("height") or 0) <= 480]
-                            direct_url = med_formats[-1]["url"] if med_formats else combined_formats[0]["url"]
-                        else:
+                            direct_url = med_formats[-1]["url"] if med_formats else combined_formats[-1]["url"]
+                        else: # Low
                             low_formats = [f for f in combined_formats if (f.get("height") or 0) <= 360]
                             direct_url = low_formats[-1]["url"] if low_formats else combined_formats[0]["url"]
                     else:
-                        # حالة نادرة: لو مفيش أي صيغة مدمجة، هات أعلى جودة متوفرة وخلاص
+                        # حالة نادرة: لو مفيش أي صيغة مدمجة، هات أي فيديو شغال
                         video_formats = [f for f in formats if f.get("vcodec") != "none" and f.get("url")]
                         if video_formats:
                             video_formats.sort(key=lambda x: x.get("height") or 0)
                             direct_url = video_formats[-1]["url"]
             # --- نهاية الاستخراج الذكي ---
 
-            # خط الدفاع الأخير لو الفلترة فشلت
+            # خط الدفاع الأخير: لو كل الفلاتر فشلت، هات الرابط الأساسي اللي yt-dlp جهزه
             if not direct_url:
                 direct_url = info.get("url")
 
@@ -219,7 +221,7 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
     except yt_dlp.utils.DownloadError as e:
         err_str = str(e).lower()
         
-        # تصحيح التقاط الأخطاء عشان متتداخلش مع بعض
+        # تصحيح التقاط الأخطاء
         if "requested format is not available" in err_str:
             return {"success": False, "error": "مفيش جودة مناسبة متاحة للتحميل المباشر للفيديو دا."}
         elif "sign in" in err_str or "age" in err_str:
