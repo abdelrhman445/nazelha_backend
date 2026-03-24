@@ -114,28 +114,13 @@ async def handle_tiktok(url: str, download_type: str):
 
 
 # ==========================================
-# yt-dlp Handler (YouTube, Instagram, etc.)
+# yt-dlp Handler (YouTube, Instagram, etc.) - Smart Extraction
 # ==========================================
 async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform: str = "general"):
     
-    # Build format string
-    if download_type == "audio":
-        if quality == "high":
-            format_string = "bestaudio[ext=m4a]/bestaudio/best"
-        elif quality == "medium":
-            format_string = "bestaudio[abr<=128]/bestaudio/best"
-        else:
-            format_string = "worstaudio/worst"
-    else:
-        # التعديل هنا لطلب صيغة فيديو مدمجة جاهزة لتجنب خطأ not available
-        if quality == "high":
-            format_string = "best[ext=mp4]/best"
-        elif quality == "medium":
-            format_string = "best[height<=480][ext=mp4]/best[height<=480]/best"
-        else:
-            format_string = "best[height<=360][ext=mp4]/best[height<=360]/worst"
+    # صيغة مرنة جداً عشان yt-dlp ميضربش خطأ أبداً ويجيب كل الداتا
+    format_string = "bestvideo+bestaudio/best/worst"
 
-    # yt-dlp options with anti-bot measures
     ydl_opts = {
         "format": format_string,
         "quiet": True,
@@ -153,12 +138,10 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
     }
 
     # ==========================================
-    # === التحقق من وجود الكوكيز ===
     if os.path.exists("cookies.txt"):
         ydl_opts["cookiefile"] = "cookies.txt"
     # ==========================================
 
-    # Extra options for YouTube to bypass bot detection
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         ydl_opts.update({
             "extractor_args": {
@@ -176,22 +159,51 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
             if not info:
                 return {"success": False, "error": "مقدرناش نجيب معلومات عن الفيديو دا."}
 
-            # Extract the direct URL
-            direct_url = info.get("url")
-            
-            # If no direct URL, get from formats
-            if not direct_url and "formats" in info:
-                formats = [f for f in info["formats"] if f.get("url")]
-                if formats:
-                    # Prefer mp4 for video
-                    if download_type != "audio":
-                        mp4_formats = [f for f in formats if f.get("ext") == "mp4"]
-                        direct_url = mp4_formats[-1]["url"] if mp4_formats else formats[-1]["url"]
+            direct_url = None
+            formats = info.get("formats", [])
+
+            # --- بداية نظام الاستخراج الذكي ---
+            if formats:
+                if download_type == "audio":
+                    # تصفية لجلب صيغ الصوت فقط
+                    audio_formats = [f for f in formats if f.get("acodec") != "none" and f.get("vcodec") == "none" and f.get("url")]
+                    if not audio_formats:
+                        audio_formats = [f for f in formats if f.get("acodec") != "none" and f.get("url")]
+                    
+                    if audio_formats:
+                        audio_formats.sort(key=lambda x: x.get("abr") or 0)
+                        direct_url = audio_formats[-1]["url"]
+
+                else: # Video
+                    # تصفية لجلب الصيغ المدمجة (صوت وصورة)
+                    combined_formats = [f for f in formats if f.get("vcodec") != "none" and f.get("acodec") != "none" and f.get("url")]
+                    
+                    if combined_formats:
+                        combined_formats.sort(key=lambda x: x.get("height") or 0)
+                        
+                        if quality == "high":
+                            # الأفضلية لـ mp4 لو متاح
+                            mp4_combined = [f for f in combined_formats if f.get("ext") == "mp4"]
+                            direct_url = mp4_combined[-1]["url"] if mp4_combined else combined_formats[-1]["url"]
+                        elif quality == "medium":
+                            med_formats = [f for f in combined_formats if (f.get("height") or 0) <= 480]
+                            direct_url = med_formats[-1]["url"] if med_formats else combined_formats[0]["url"]
+                        else:
+                            low_formats = [f for f in combined_formats if (f.get("height") or 0) <= 360]
+                            direct_url = low_formats[-1]["url"] if low_formats else combined_formats[0]["url"]
                     else:
-                        direct_url = formats[-1]["url"]
+                        # حالة نادرة: لو مفيش أي صيغة مدمجة، هات أعلى جودة متوفرة وخلاص
+                        video_formats = [f for f in formats if f.get("vcodec") != "none" and f.get("url")]
+                        if video_formats:
+                            video_formats.sort(key=lambda x: x.get("height") or 0)
+                            direct_url = video_formats[-1]["url"]
+            # --- نهاية الاستخراج الذكي ---
+
+            # خط الدفاع الأخير لو الفلترة فشلت
+            if not direct_url:
+                direct_url = info.get("url")
 
             if direct_url:
-                # Clean up YouTube signed URLs (they expire, but still work fine)
                 return {
                     "success": True,
                     "download_url": direct_url,
@@ -202,12 +214,15 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
                     "platform": platform
                 }
             else:
-                return {"success": False, "error": "مقدرناش نستخرج رابط التحميل المباشر من الفيديو دا."}
+                return {"success": False, "error": "مفيش رابط مباشر متاح للتحميل للفيديو دا."}
 
     except yt_dlp.utils.DownloadError as e:
         err_str = str(e).lower()
         
-        if "sign in" in err_str or "age" in err_str:
+        # تصحيح التقاط الأخطاء عشان متتداخلش مع بعض
+        if "requested format is not available" in err_str:
+            return {"success": False, "error": "مفيش جودة مناسبة متاحة للتحميل المباشر للفيديو دا."}
+        elif "sign in" in err_str or "age" in err_str:
             return {"success": False, "error": "الفيديو دا محتاج تسجيل دخول أو مقيد بالسن."}
         elif "private" in err_str:
             return {"success": False, "error": "الفيديو دا برايفيت ومش متاح."}
