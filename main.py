@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import yt_dlp
 import httpx
 import re
+import os  # تمت إضافة هذه المكتبة للتحقق من وجود ملف الكوكيز
 
 app = FastAPI(title="Nazelha Video Downloader API")
 
@@ -149,6 +150,12 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str, platform
         "retries": 3,
         "fragment_retries": 3,
     }
+
+    # ==========================================
+    # === التعديل الجديد: التحقق من وجود الكوكيز ===
+    if os.path.exists("cookies.txt"):
+        ydl_opts["cookiefile"] = "cookies.txt"
+    # ==========================================
 
     # Extra options for YouTube to bypass bot detection
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
