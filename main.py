@@ -110,7 +110,7 @@ async def handle_with_ytdlp(url: str, download_type: str, quality: str):
 
     # لو في cookies.txt على السيرفر استخدمه
     if os.path.exists("cookies.txt"):
-        base_opts["cookiefile"] = "cookies.txt"
+    ydl_opts["cookiefile"] = "cookies.txt"
 
     # YouTube: استخدم android player عشان يتجاوز الحجب
     is_youtube = "youtube.com" in url.lower() or "youtu.be" in url.lower()
